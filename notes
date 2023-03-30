@@ -1,0 +1,414 @@
+#include "floatx.h"
+#include <assert.h>
+#include <limits.h> // for CHAR_BIT - number of bits per byte
+#include <math.h>	// for isinf and isnan
+#include "bitFields.h"
+#include "bitFields.c"
+
+typedef union
+{
+	double dVal;
+	unsigned long lVal;
+} undl;
+
+floatx doubleToFloatx(double val, int totBits, int expBits)
+{
+	/*-----------------------------------------------------------------------------------------------
+	From the README: At a high level, doing the conversion requires several manipulations:
+	1. Extracting the sign bit from the double value, and inserting it into the floatx value at
+	the correct position.
+	2. Handle special cases, such as 0.0, infinity, or not-a-number.
+	3. Extract the biased exponent from the double value.
+	Check to see if the double value is sub-normal. If so, handle it.
+	Check to make sure the floatx exponent won't overflow or underflow).
+	If so, handle as a special case.
+	If not, rebias the exponent using the floatx bias (which depends on the number of exponent bits)
+	and write the result to the correct location in the floatx result.
+	4. Extract the fraction bits from the double value.
+	Determine how many bits are available for the fraction in the floatx value,
+	and truncate or extend the original value,
+	and write the resulting bits to the floatx result.
+	6. Return the floatx result.
+	----------------------------------------------------------------------------------------------------*/
+	// First, make some assertions to ensure the totBits and expBits parameters are OK
+	// Then, implement the algorithm
+
+	assert(expBits >= 3 && totBits >= expBits + 1);
+	// expBits needs to be at least 3, a signed exponent
+	// totBits: needs to have space for signed bit, expBits, and mantissa
+
+	floatx floatxValue = 0;
+	undl unionVal;
+	unionVal.dVal = val;
+
+	setBit(totBits - 1, 63, &floatxValue);
+	// set unsigned bit
+
+	unsigned long exponent = getBitFldU(62, 11, unionVal.lVal);
+	// get the bit field for the exponent, which is up to 11 bits long, and starts at bit 62
+	// takes from value
+
+	unsigned long mantissa = getBitFldU(51, 52, unionVal.lVal);
+	// get bit field for mantissa, is up to 52 bits long, starts at bit 52
+
+	int mantissaLen = totBits - expBits - 1;
+	int mantissaIndex = totBits - expBits - 2;
+
+	if (isnan(val) || isinf(val)) // check if NAN or infinity
+	{
+
+		setBitFld(totBits - 2, expBits, 1, &floatxValue); // if nan or infinity, set exp bits to 1s
+		if (isinf(val))
+		{
+			setBitFld(totBits - 13, mantissaLen, 0, &floatxValue); // set mantissa bits to 0s if infinity
+		}
+		return floatxValue;
+	}
+
+	long longExp = exponent;
+	
+	if (exponent == 0) // check if denormalized num
+	{
+		if (mantissa == 0) /// if mantissa is 0 as well, value is 0.0
+		{
+			setBitFld(totBits - 2, totBits - 1, 0, &floatxValue);
+			return floatxValue;
+		}
+		// if denormal, leading digit is assumed to be zero
+		/// begin shifting bits to the left by the num of leading zero digits
+		int leadingZeroes = 0;
+
+		while (leadingZeroes == 52 && !getBit(51 - leadingZeroes, mantissa)){ //check if leadingZeroes is under 52 and if current bit is 0
+			leadingZeroes++; //continue until leading 1 is found
+		}
+
+		longExp -= leadingZeroes - 1; //find 
+
+		for (int i = -1; i < leadingZeroes; i++)
+		{
+			mantissa <<= 1;
+		}
+	}
+
+	unsigned long bias = 1;
+	bias <<= (expBits - 1); // 2^(expBits - 1) - 1
+	bias--;
+
+	longExp = longExp - 1023 + bias; // find double point exp version
+
+	if (longExp < 1)
+	{
+		setBit(52, 1, &mantissa);
+
+		for (int i = 0; i < (-1 * (longExp - 1)); i++)
+			mantissa >>= 1;
+
+		longExp = 0;
+	}
+
+	unsigned long largest_exp = 1;
+	largest_exp <<= expBits;
+	largest_exp -= 2;
+
+	if (longExp > largest_exp)
+	{
+		exponent = largest_exp + 1;
+		setBitFld(totBits - 2, expBits, exponent, &floatxValue);
+		setBitFld(mantissaIndex, mantissaLen, 0, &floatxValue);
+
+		return floatxValue;
+	}
+
+	exponent = longExp;
+	setBitFld(totBits - 2, expBits, exponent, &floatxValue);
+
+	if ((mantissaLen) < 52)
+	{
+		mantissa >>= (52 - (mantissaLen));
+	}
+	else
+	{
+		mantissa <<= (totBits - expBits - 53);
+	}
+	setBitFld(mantissaIndex, mantissaLen, mantissa, &floatxValue);
+
+	return floatxValue;
+}
+
+/////
+#include "floatx.h"
+#include <assert.h>
+#include <limits.h> // for CHAR_BIT - number of bits per byte
+#include <math.h>	// for isinf and isnan
+#include "bitFields.h"
+#include "bitFields.c"
+
+typedef union
+{
+	double dVal;
+	unsigned long lVal;
+} undl;
+
+floatx doubleToFloatx(double val, int totBits, int expBits)
+{
+	/*-----------------------------------------------------------------------------------------------
+	From the README: At a high level, doing the conversion requires several manipulations:
+	1. Extracting the sign bit from the double value, and inserting it into the floatx value at
+	the correct position.
+	2. Handle special cases, such as 0.0, infinity, or not-a-number.
+	3. Extract the biased exponent from the double value.
+	Check to see if the double value is sub-normal. If so, handle it.
+	Check to make sure the floatx exponent won't overflow or underflow).
+	If so, handle as a special case.
+	If not, rebias the exponent using the floatx bias (which depends on the number of exponent bits)
+	and write the result to the correct location in the floatx result.
+	4. Extract the fraction bits from the double value.
+	Determine how many bits are available for the fraction in the floatx value,
+	and truncate or extend the original value,
+	and write the resulting bits to the floatx result.
+	6. Return the floatx result.
+	----------------------------------------------------------------------------------------------------*/
+	// First, make some assertions to ensure the totBits and expBits parameters are OK
+	// Then, implement the algorithm
+
+	assert(expBits >= 3 && totBits >= expBits + 1);
+	// expBits needs to be at least 3, a signed exponent
+	// totBits: needs to have space for signed bit, expBits, and mantissa
+
+	floatx floatxValue = 0;
+	undl unionVal;
+	unionVal.dVal = val;
+
+	setBit(totBits - 1, 63, &floatxValue);
+	// set unsigned bit
+
+	unsigned long exponent = getBitFldU(62, 11, unionVal.lVal);
+	// get the bit field for the exponent, which is up to 11 bits long, and starts at bit 62
+	// takes from value
+
+	unsigned long mantissa = getBitFldU(51, 52, unionVal.lVal);
+	// get bit field for mantissa, is up to 52 bits long, starts at bit 52
+
+	int mantissaLen = totBits - expBits - 1;
+	int mantissaIndex = totBits - expBits - 2;
+
+	if (isnan(val) || isinf(val)) // check if NAN or infinity
+	{
+
+		setBitFld(totBits - 2, expBits, 1, &floatxValue); // if nan or infinity, set exp bits to 1s
+		if (isinf(val))
+		{
+			setBitFld(mantissaIndex, mantissaLen, 0, &floatxValue); // set mantissa bits to 0s if infinity
+		}
+		return floatxValue; //done
+	}
+
+	long longExp = exponent;
+	
+	if (exponent == 0) // check if denormalized num
+	{
+		if (mantissa == 0) /// if mantissa is 0 as well, value is 0.0
+		{
+			setBitFld(totBits - 2, totBits - 1, 0, &floatxValue);
+			return floatxValue; //done
+		}
+		// if denormal, leading digit is assumed to be zero
+		/// begin shifting bits to the left by the num of leading zero digits
+		int leadingZeroes = 0;
+
+		while (leadingZeroes < 52 && !getBit(51 - leadingZeroes, mantissa)){ //check if leadingZeroes is under 52 and if current bit is 0
+			leadingZeroes++; //continue until leading 1 is found
+		}
+
+		longExp -= leadingZeroes - 1; //find 
+
+		for (int i = -1; i < leadingZeroes; i++)
+		{
+			mantissa <<= 1; //shifts leading 1 to the front
+		}
+	}
+
+	unsigned long bias = 1;
+	bias <<= (expBits - 1); // 2^(expBits - 1) - 1
+	bias--;
+
+	longExp = longExp - 1023 + bias; // find double point exp version
+
+	if (longExp < 1) //check for denormalized number again, if exponent is too small 
+	{
+		setBit(52, 1, &mantissa);
+
+		
+
+		mantissa >>= (-1 * (longExp - 1));
+
+		longExp = 0;
+	}
+
+	unsigned long largest_exp = 1;
+	largest_exp <<= expBits;
+	largest_exp -= 2;
+
+	if (longExp > largest_exp)
+	{
+		exponent = largest_exp + 1;
+		setBitFld(totBits - 2, expBits, exponent, &floatxValue);
+		setBitFld(mantissaIndex, mantissaLen, 0, &floatxValue);
+
+		return floatxValue;
+	}
+
+	exponent = longExp;
+	setBitFld(totBits - 2, expBits, exponent, &floatxValue);
+
+	if ((mantissaLen) < 52)
+	{
+		mantissa >>= (52 - (mantissaLen));
+	}
+	else
+	{
+		mantissa <<= (totBits - expBits - 53);
+	}
+	setBitFld(mantissaIndex, mantissaLen, mantissa, &floatxValue);
+
+	return floatxValue;
+}
+
+///
+#include "floatx.h"
+#include <assert.h>
+#include <limits.h> // for CHAR_BIT - number of bits per byte
+#include <math.h>	// for isinf and isnan
+#include "bitFields.h"
+#include "bitFields.c"
+
+typedef union
+{
+	double dVal;
+	unsigned long lVal;
+} undl;
+
+floatx doubleToFloatx(double val, int totBits, int expBits)
+{
+	/*-----------------------------------------------------------------------------------------------
+	From the README: At a high level, doing the conversion requires several manipulations:
+	1. Extracting the sign bit from the double value, and inserting it into the floatx value at
+	the correct position.
+	2. Handle special cases, such as 0.0, infinity, or not-a-number.
+	3. Extract the biased exponent from the double value.
+	Check to see if the double value is sub-normal. If so, handle it.
+	Check to make sure the floatx exponent won't overflow or underflow).
+	If so, handle as a special case.
+	If not, rebias the exponent using the floatx bias (which depends on the number of exponent bits)
+	and write the result to the correct location in the floatx result.
+	4. Extract the fraction bits from the double value.
+	Determine how many bits are available for the fraction in the floatx value,
+	and truncate or extend the original value,
+	and write the resulting bits to the floatx result.
+	6. Return the floatx result.
+	----------------------------------------------------------------------------------------------------*/
+	// First, make some assertions to ensure the totBits and expBits parameters are OK
+	// Then, implement the algorithm
+
+	assert(totBits > 2 && expBits > 0 && (totBits - expBits) > 1);
+
+floatx floatxValue = 0;
+undl input;
+input.dVal = val;
+
+setBit(totBits-1, getBit(63, input.lVal), &floatxValue);
+
+unsigned long exponent = getBitFldU(62, 11, input.lVal);
+unsigned long mantissa = getBitFldU(51, 52, input.lVal);
+
+	int mantissaLen = totBits - expBits - 1;
+	int mantissaIndex = totBits - expBits - 2;
+
+unsigned long mask = 1;
+mask <<= 11;
+mask -= 1;
+
+if ((exponent & mask) == mask)
+{
+mask = 0;
+mask -= 1;
+
+setBitFld(totBits-2, expBits, mask, &floatxValue);
+
+mask = 0;
+if(mantissa != 0){
+    mask--;
+}
+
+setBitFld(totBits-expBits-2, totBits-1-expBits, mask, &floatxValue);
+return floatxValue;
+}
+
+long longExp = exponent;
+
+if (exponent ==0)
+{
+int first_1 = 0;
+
+while (first_1 < 52 && !getBit(51-first_1, mantissa)){
+first_1++;
+}
+
+if (first_1 == 52)
+{
+setBitFld(totBits-2, totBits-1, 0, &floatxValue);
+return floatxValue;
+}
+
+longExp -= (first_1 + 1);
+
+for (int i=0; i<first_1+1; i++)
+{
+mantissa <<= 1;
+}
+}
+	unsigned long bias = 1;
+	bias <<= (expBits - 1); // 2^(expBits - 1) - 1
+	bias--;
+
+	longExp = longExp - 1023 + bias; // find double point exp version
+
+	if (longExp < 1) //check for denormalized number again, if exponent is too small 
+	{
+		setBit(52, 1, &mantissa);
+
+		
+
+		mantissa >>= (-1 * (longExp - 1));
+
+		longExp = 0;
+	}
+
+	unsigned long largest_exp = 1;
+	largest_exp <<= expBits;
+	largest_exp -= 2;
+
+	if (longExp > largest_exp)
+	{
+		exponent = largest_exp + 1;
+		setBitFld(totBits - 2, expBits, exponent, &floatxValue);
+		setBitFld(mantissaIndex, mantissaLen, 0, &floatxValue);
+
+		return floatxValue;
+	}
+
+	exponent = longExp;
+	setBitFld(totBits - 2, expBits, exponent, &floatxValue);
+
+	if ((mantissaLen) < 52)
+	{
+		mantissa >>= (52 - (mantissaLen));
+	}
+	else
+	{
+		mantissa <<= (totBits - expBits - 53);
+	}
+	setBitFld(mantissaIndex, mantissaLen, mantissa, &floatxValue);
+
+	return floatxValue;
+}

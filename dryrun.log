@@ -1,0 +1,8 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/home/jchoe2/cs220/proj02-taestii'
+gcc -Wall -std=c18 -ggdb -o testFloatx  testFloatx.c floatx.c -lm
+./testFloatx 32 8 <test1.txt
+./testFloatx 16 4 <test1.txt
+./testFloatx 64 11 <test1.txt
+make: Leaving directory '/home/jchoe2/cs220/proj02-taestii'
+ 
